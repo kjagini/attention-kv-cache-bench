@@ -180,8 +180,68 @@ def prefill_decode_gif():
     save(frames, "00_prefill_vs_decode.gif", ms=90)
 
 
+# --------------------------------------------------------------------------
+# 3) KV cache: recompute everything vs compute only the new token
+# --------------------------------------------------------------------------
+def kv_cache_gif():
+    frames, steps, per = [], 4, 14
+    for f in range(steps * per):
+        s, ph = divmod(f, per)
+        n = 4 + s                       # tokens seen so far (incl. the newest)
+        im = Image.new("RGB", (W, H), BG)
+        d = ImageDraw.Draw(im)
+        d.line([W / 2, 130, W / 2, H - 20], fill=GREY, width=2)
+        text(d, (240, 30), "WITHOUT a cache", F_T, RED)
+        text(d, (240, 62), "recompute K,V for every token, every step", F_S, GREY)
+        text(d, (720, 30), "WITH a KV cache", F_T, GREEN)
+        text(d, (720, 62), "compute K,V once, then reuse", F_S, GREY)
+        text(d, (W / 2, 100), f"generating token {n}", F_M, INK)
+        flash = ph < 8
+        for side, x0 in ((0, 70), (1, 550)):
+            for i in range(7):
+                x = x0 + i * 56
+                if i < n:
+                    newest = i == n - 1
+                    if side == 0:
+                        # every box is recomputed this step
+                        col = RED if flash else ORANGE
+                        box(d, x, 230, 46, 46, col, "K,V", f=font(13))
+                    else:
+                        col = RED if (newest and flash) else ORANGE
+                        box(d, x, 230, 46, 46, col, "K,V", f=font(13))
+                    text(d, (x, 270), f"t{i+1}", F_S, GREY)
+                else:
+                    box(d, x, 230, 46, 46, None, dashed=True)
+            # counter
+            computed = n if side == 0 else 1
+            text(d, (240 if side == 0 else 720, 168), f"K,V computed this step: {computed}",
+                 F_M, RED if side == 0 else GREEN)
+        # right side: arrows showing old entries are just read from memory
+        if not flash:
+            for i in range(n):
+                a, b = (550 + i * 56, 254), (720, 400)
+                arrow(d, a, b)
+                dots(d, a, b, (ph - 8) / 6, n=1)
+        else:
+            for i in range(n - 1):
+                text(d, (550 + i * 56, 300), "saved", font(13), GREEN)
+        # left: arrows from every token into the model each step
+        for i in range(n):
+            a, b = (70 + i * 56, 254), (240, 400)
+            arrow(d, a, b)
+            if flash:
+                dots(d, a, b, ph / 8, n=1)
+        box(d, 240, 420, 200, 40, (235, 235, 235), "attention")
+        box(d, 720, 420, 200, 40, (235, 235, 235), "attention")
+        text(d, (240, 490), "work grows with every token", F_M)
+        text(d, (720, 490), "new token only; the rest is a memory read", F_M)
+        frames.append(im)
+    save(frames, "05_kv_cache.gif", ms=110)
+
+
 if __name__ == "__main__":
     prefill_decode_gif()
+    kv_cache_gif()
     attention_gif("01_mha.gif", "MHA: every head has its own K,V",
                   "4 query heads -> 4 separate cache entries (schematic)",
                   [[0], [1], [2], [3]], "each decode step reads ALL of these", 1.0, "1x (baseline)")
